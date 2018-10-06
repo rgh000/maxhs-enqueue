@@ -482,6 +482,38 @@ void Solver::analyzeFinal(Lit p, LSet& out_conflict)
     seen[var(p)] = 0;
 }
 
+void Solver::analyzeFinal2(CRef confl, LSet& out_conflict)
+{
+    out_conflict.clear();
+    
+    if (decisionLevel() == 0)
+        return;
+    
+    for (int i = 0; i < ca[confl].size(); i++) {
+        Lit p = ca[confl][i];
+        seen[var(p)] = 1;
+    }
+    
+    for (int i = trail.size()-1; i >= trail_lim[0]; i--){
+        Var x = var(trail[i]);
+        if (seen[x]){
+            if (reason(x) == CRef_Undef){
+                assert(level(x) > 0);
+                out_conflict.insert(~trail[i]);
+            }else{
+                Clause& c = ca[reason(x)];
+                for (int j = 1; j < c.size(); j++)
+                    if (level(var(c[j])) > 0)
+                        seen[var(c[j])] = 1;
+            }
+            seen[x] = 0;
+        }
+    }
+    for (int i = 0; i < ca[confl].size(); i++) {
+        Lit p = ca[confl][i];
+        seen[var(p)] = 0;
+    }
+}
 
 void Solver::uncheckedEnqueue(Lit p, CRef from)
 {
@@ -713,6 +745,10 @@ lbool Solver::search(int nof_conflicts)
             // CONFLICT
             conflicts++; conflictC++;
             if (decisionLevel() == 0) return l_False;
+            if (decisionLevel() == 1) {
+                analyzeFinal2(confl, conflict);
+                return l_False;
+            }
 
             learnt_clause.clear();
             analyze(confl, learnt_clause, backtrack_level);
@@ -760,34 +796,35 @@ lbool Solver::search(int nof_conflicts)
                 reduceDB();
 
             Lit next = lit_Undef;
-            while (decisionLevel() < assumptions.size()){
+            if (decisionLevel() == 0) {
+                newDecisionLevel();
                 // Perform user provided assumption:
-                Lit p = assumptions[decisionLevel()];
-                if (value(p) == l_True){
-                    // Dummy decision level:
-                    newDecisionLevel();
-                }else if (value(p) == l_False){
-                    analyzeFinal(~p, conflict);
-                    return l_False;
-                }else{
-                    next = p;
-                    break;
+                for (int i = 0; i < assumptions.size(); i++) {
+                    Lit p = assumptions[i];
+                    if (value(p) == l_False) {
+                        conflict.insert(p);
+                        return l_False;
+                    }else if (value(p) == l_Undef) {
+                        uncheckedEnqueue(p);
+                    }
                 }
             }
+            else if (decisionLevel() > 0) {
 
-            if (next == lit_Undef){
-                // New variable decision:
-                decisions++;
-                next = pickBranchLit();
+                if (next == lit_Undef){
+                    // New variable decision:
+                    decisions++;
+                    next = pickBranchLit();
 
-                if (next == lit_Undef)
-                    // Model found:
-                    return l_True;
+                    if (next == lit_Undef)
+                        // Model found:
+                        return l_True;
+                }
+
+                // Increase decision level and enqueue 'next'
+                newDecisionLevel();
+                uncheckedEnqueue(next);
             }
-
-            // Increase decision level and enqueue 'next'
-            newDecisionLevel();
-            uncheckedEnqueue(next);
         }
     }
 }
@@ -839,7 +876,6 @@ static double luby(double y, int x){
 lbool Solver::solve_()
 {
     model.clear();
-    conflict.clear();
     conflict.clear();
     if (!ok) return l_False;
 
