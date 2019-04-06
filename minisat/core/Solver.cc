@@ -747,7 +747,69 @@ lbool Solver::search(int nof_conflicts)
             if (decisionLevel() == 0) return l_False;
             if (decisionLevel() == 1) {
                 analyzeFinal2(confl, conflict);
+                //propagate conflict clause 1-by-1 until conflict reached and keep decisions only
+                cancelUntil(0);
+                CRef con = CRef_Undef;
+                vec<Lit> conflict2;
+                for (int z = 0; z < conflict.size(); z++) {
+                    conflict2.push(conflict[z]);
+                }
+                conflict.clear();
+                for (int z = 0; z < conflict2.size(); z++) {
+                    Lit p = conflict2[z];
+                    if (value(~p) == l_Undef) {
+                        newDecisionLevel();
+                        uncheckedEnqueue(~p);
+                        conflict.insert(p);
+                        con = propagate();
+                        if (con != CRef_Undef) {
+                            //conflict.clear();
+                            //analyzeFinal(p, conflict);
+                            break;
+                        }
+                        else {
+                            ;
+                        }
+                    }
+                    else if (value(~p) == l_True) {
+                        newDecisionLevel();
+                    }
+                    else if (value(~p) == l_False) {
+                        //conflict.clear();
+                        //analyzeFinal(p, conflict);
+                        conflict.insert(p);
+                        break;
+                    }
+                }
                 return l_False;
+                //Failed attempt! propagate conflict clause 1-by-1 until conflict reached; then analyzeFinal
+                /*cancelUntil(0);
+                CRef con = CRef_Undef;
+                for (int z = 0; z < conflict.size(); z++) {
+                    Lit p = conflict[z];
+                    if (value(~p) == l_Undef) {
+                        newDecisionLevel();
+                        uncheckedEnqueue(~p);
+                        con = propagate();
+                        if (con != CRef_Undef) {
+                            conflict.clear();
+                            analyzeFinal(p, conflict); //INCORRECT
+                            break;
+                        }
+                        else {
+                            ;
+                        }
+                    }
+                    else if (value(~p) == l_True) {
+                        newDecisionLevel();
+                    }
+                    else if (value(~p) == l_False) {
+                        conflict.clear();
+                        analyzeFinal(p, conflict);
+                        break;
+                    }
+                }
+                return l_False;*/
             }
 
             learnt_clause.clear();
@@ -802,7 +864,7 @@ lbool Solver::search(int nof_conflicts)
                 for (int i = 0; i < assumptions.size(); i++) {
                     Lit p = assumptions[i];
                     if (value(p) == l_False) {
-                        conflict.insert(p);
+                        conflict.insert(~p);
                         return l_False;
                     }else if (value(p) == l_Undef) {
                         uncheckedEnqueue(p);
